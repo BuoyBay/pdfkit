@@ -1,0 +1,171 @@
+Public Function PDFKitSupported() As Boolean
+    #If TargetMac Then
+        Return True
+    #Else
+        Return False
+    #End If
+End Function
+
+#If TargetMac Then
+    Private Declare Function NativeClass Lib "objc" Alias "objc_getClass" (name As String) As Ptr
+    Private Declare Function Allocate Lib "Foundation" Selector "alloc" (cls As Ptr) As Ptr
+    Private Declare Function InitObject Lib "Foundation" Selector "init" (object As Ptr) As Ptr
+    Private Declare Function NewPool Lib "Foundation" Selector "new" (cls As Ptr) As Ptr
+    Private Declare Sub DrainPool Lib "Foundation" Selector "drain" (pool As Ptr)
+    Private Declare Sub ReleaseObject Lib "CoreFoundation" Alias "CFRelease" (value As Ptr)
+    Private Function NativeText(value As Ptr) As String
+        If value = Nil Then Return ""
+        Return CType(CType(value, CFStringRef), String)
+    End Function
+    Private Declare Function LoadFramework Lib "c" Alias "dlopen" (filePath As String, loadFlags As Int32) As Ptr
+    Private Declare Function FileURL Lib "Foundation" Selector "initFileURLWithPath:" (url As Ptr, filePath As Ptr) As Ptr
+    Private Declare Function InitPDF Lib "Foundation" Selector "initWithURL:" (document As Ptr, url As Ptr) As Ptr
+    Private Declare Function CountPages Lib "Foundation" Selector "pageCount" (document As Ptr) As Integer
+    Private Declare Function PDFPage Lib "Foundation" Selector "pageAtIndex:" (document As Ptr, index As Integer) As Ptr
+    Private Declare Function PageString Lib "Foundation" Selector "string" (page As Ptr) As Ptr
+    Private Declare Function PDFLocked Lib "Foundation" Selector "isLocked" (document As Ptr) As UInt8
+    Private Declare Function PDFEncrypted Lib "Foundation" Selector "isEncrypted" (document As Ptr) As UInt8
+    Private Declare Function UnlockPDF Lib "Foundation" Selector "unlockWithPassword:" (document As Ptr, password As Ptr) As UInt8
+    Private Declare Function Attributes Lib "Foundation" Selector "documentAttributes" (document As Ptr) As Ptr
+    Private Declare Function DictionaryItem Lib "Foundation" Selector "objectForKey:" (dictionary As Ptr, key As Ptr) As Ptr
+    Private Declare Function IsString Lib "Foundation" Selector "isKindOfClass:" (object As Ptr, cls As Ptr) As UInt8
+    Private Class PDFFramework
+        Public Shared Property Handle As Ptr = Nil
+        Public Shared Property Guard As Mutex = New Mutex()
+    End Class
+    Private Function PDFClass() As Ptr
+        SyncLock PDFFramework.Guard
+            If PDFFramework.Handle = Nil Then
+                PDFFramework.Handle = LoadFramework("/System/Library/Frameworks/PDFKit.framework/PDFKit", 1)
+                If PDFFramework.Handle = Nil Then PDFFramework.Handle = LoadFramework("/System/Library/Frameworks/Quartz.framework/Frameworks/PDFKit.framework/PDFKit", 1)
+            End If
+            Dim cls As Ptr = NativeClass("PDFDocument")
+            If cls = Nil Then Throw New UnsupportedOperationException("PDFKit is unavailable")
+            Return cls
+        End SyncLock
+    End Function
+#End If
+
+Private Sub ValidateText(value As String, label As String)
+    If String.Trim(value) = "" Then Throw New InvalidArgumentException(label + " is required")
+    For Each character As String In String.Chars(value)
+        If String.Asc(character) = 0 Then Throw New InvalidArgumentException(label + " contains NUL")
+    Next
+End Sub
+
+Public Class PDFReader
+    Private Property Document As Ptr = Nil
+    Private Property Closed As Boolean = False
+    Public Sub Constructor(file As FileSystemItem)
+        If file = Nil Then Throw New InvalidArgumentException("A PDF file is required")
+        ValidateText(file.NativePath, "PDF path")
+        If Not file.Exists() Then Throw New InvalidArgumentException("PDF file does not exist")
+        #If TargetMac Then
+            Dim pool As Ptr = NewPool(NativeClass("NSAutoreleasePool"))
+            Dim text As CFStringRef = CType(file.NativePath, CFStringRef)
+            Dim url As Ptr = Nil
+            Try
+                url = FileURL(Allocate(NativeClass("NSURL")), text)
+                Me.Document = InitPDF(Allocate(PDFClass()), url)
+                If Me.Document = Nil Then Throw New InvalidArgumentException("File is not a readable PDF")
+            Finally
+                If url <> Nil Then ReleaseObject(url)
+                ReleaseObject(text)
+                DrainPool(pool)
+            End Try
+        #Else
+            Throw New UnsupportedOperationException("PDFKit requires macOS")
+        #End If
+    End Sub
+    Private Sub RequireOpen()
+        If Me.Closed Then Throw New InvalidArgumentException("PDF reader is closed")
+    End Sub
+    Public Property PageCount As Integer
+        Get
+            Me.RequireOpen()
+            #If TargetMac Then
+                Return CountPages(Me.Document)
+            #Else
+                Return 0
+            #End If
+        End Get
+    End Property
+    Public Property IsLocked As Boolean
+        Get
+            Me.RequireOpen()
+            #If TargetMac Then
+                Return PDFLocked(Me.Document) <> 0
+            #Else
+                Return False
+            #End If
+        End Get
+    End Property
+    Public Property IsEncrypted As Boolean
+        Get
+            Me.RequireOpen()
+            #If TargetMac Then
+                Return PDFEncrypted(Me.Document) <> 0
+            #Else
+                Return False
+            #End If
+        End Get
+    End Property
+    Public Function Unlock(password As String) As Boolean
+        Me.RequireOpen()
+        #If TargetMac Then
+            Dim text As CFStringRef = CType(password, CFStringRef)
+            Try
+                Return UnlockPDF(Me.Document, text) <> 0
+            Finally
+                ReleaseObject(text)
+            End Try
+        #Else
+            Return False
+        #End If
+    End Function
+    Public Function PageText(index As Integer) As String
+        Me.RequireOpen()
+        If Me.IsLocked Then Throw New InvalidArgumentException("Unlock the PDF before reading text")
+        If index < 0 Or index >= Me.PageCount Then Throw New InvalidArgumentException("PDF page index is out of range")
+        #If TargetMac Then
+            Dim pool As Ptr = NewPool(NativeClass("NSAutoreleasePool"))
+            Try
+                Return NativeText(PageString(PDFPage(Me.Document, index)))
+            Finally
+                DrainPool(pool)
+            End Try
+        #Else
+            Return ""
+        #End If
+    End Function
+    Public Function Metadata(key As String) As String
+        Me.RequireOpen()
+        ValidateText(key, "Metadata key")
+        #If TargetMac Then
+            Dim pool As Ptr = NewPool(NativeClass("NSAutoreleasePool"))
+            Dim text As CFStringRef = CType(key, CFStringRef)
+            Try
+                Dim value As Ptr = DictionaryItem(Attributes(Me.Document), text)
+                If value = Nil Then Return ""
+                If IsString(value, NativeClass("NSString")) = 0 Then Return ""
+                Return NativeText(value)
+            Finally
+                ReleaseObject(text)
+                DrainPool(pool)
+            End Try
+        #Else
+            Return ""
+        #End If
+    End Function
+    Public Sub Close()
+        If Me.Closed Then Return
+        Me.Closed = True
+        #If TargetMac Then
+            If Me.Document <> Nil Then ReleaseObject(Me.Document)
+        #End If
+        Me.Document = Nil
+    End Sub
+    Public Sub Destructor()
+        Me.Close()
+    End Sub
+End Class
