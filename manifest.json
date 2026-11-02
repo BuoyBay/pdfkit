@@ -2,7 +2,7 @@
     "schema": 1,
     "name": "pdfkit",
     "version": "0.1.0",
-    "description": "macOS PDF text, metadata, encrypted docs",
+    "description": "macOS PDF text and metadata",
     "platforms": [
         "arm64-apple-macos",
         "x86_64-apple-macos",

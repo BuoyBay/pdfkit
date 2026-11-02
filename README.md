@@ -1,4 +1,4 @@
-# macOS PDF text, metadata, encrypted docs
+# macOS PDF text and metadata
 
 `Import pdfkit`. `New PDFReader(file)` opens an existing local PDF. Read `PageCount`, `IsLocked`, `IsEncrypted`; use `PageText(zeroBasedIndex)` and `Metadata(key)` (for example `"Title"`). `Unlock(password)` explicitly attempts a password; passwords are neither saved nor logged. `Close()` is final/idempotent. Empty text can mean a scanned page: OCR is not provided. Use a reader on one thread at a time and keep it open while reading.
 
