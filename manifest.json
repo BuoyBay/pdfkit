@@ -1,14 +1,14 @@
 {
-  "schema": 1,
-  "name": "pdfkit",
-  "version": "0.1.0",
-  "description": "Read PDF text, metadata and encrypted documents on macOS",
-  "platforms": [
-    "arm64-apple-macos",
-    "x86_64-apple-macos",
-    "x86_64-unknown-linux-gnu",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-pc-windows-msvc",
-    "arm64-pc-windows-msvc"
-  ]
+    "schema": 1,
+    "name": "pdfkit",
+    "version": "0.1.0",
+    "description": "macOS PDF text, metadata, encrypted docs",
+    "platforms": [
+        "arm64-apple-macos",
+        "x86_64-apple-macos",
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-pc-windows-msvc",
+        "arm64-pc-windows-msvc"
+    ]
 }
