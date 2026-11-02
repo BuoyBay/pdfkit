@@ -2,7 +2,7 @@
   "schema": 1,
   "name": "pdfkit",
   "version": "0.1.0",
-  "description": "Native PDF page count, text extraction, metadata and password unlock",
+  "description": "Read PDF text, metadata and encrypted documents on macOS",
   "platforms": [
     "arm64-apple-macos",
     "x86_64-apple-macos",
